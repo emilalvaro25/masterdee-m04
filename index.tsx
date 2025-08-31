@@ -6,7 +6,7 @@
 
 import {GoogleGenAI, LiveServerMessage, Modality, Session} from '@google/genai';
 import {LitElement, css, html} from 'lit';
-import {customElement, state} from 'lit/decorators.js';
+import {customElement, state, query} from 'lit/decorators.js';
 import {classMap} from 'lit/directives/class-map.js';
 import {createBlob, decode, decodeAudioData, blobToGenaiBlob} from './utils';
 import './visual-3d';
@@ -278,6 +278,8 @@ export class GdmLiveAudio extends LitElement {
   private canvasEl: HTMLCanvasElement;
   private videoFrameSender: number | null = null;
 
+  @query('.chat-history') private _chatHistoryEl: HTMLElement;
+
   static styles = css`
     :host {
       --background-color: #000000;
@@ -295,6 +297,7 @@ export class GdmLiveAudio extends LitElement {
       --user-message-background: #4f46e5;
       --model-message-background: #374151;
       --error-color: #ef4444;
+      --shadow-color: rgba(0, 0, 0, 0.2);
 
       display: block;
       width: 100vw;
@@ -321,6 +324,24 @@ export class GdmLiveAudio extends LitElement {
       --user-message-background: #6366f1;
       --model-message-background: #e5e7eb;
       --error-color: #dc2626;
+      --shadow-color: rgba(0, 0, 0, 0.1);
+    }
+
+    @keyframes message-appear {
+      from {
+        opacity: 0;
+        transform: translateY(15px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     .app-container {
@@ -477,7 +498,7 @@ export class GdmLiveAudio extends LitElement {
       background-color: #000;
       transform: scaleX(-1);
       z-index: 100;
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 10px 20px var(--shadow-color);
     }
     #video-preview:not([srcObject]) {
       display: none;
@@ -584,25 +605,27 @@ export class GdmLiveAudio extends LitElement {
       visibility: hidden;
       width: 250px;
       background-color: var(--input-background);
+      box-shadow: 0 4px 15px var(--shadow-color);
       color: var(--text-primary);
       text-align: left;
-      border-radius: 6px;
-      padding: 10px;
+      border-radius: 8px;
+      padding: 12px;
       position: absolute;
       z-index: 1001;
-      bottom: 50%;
-      transform: translateY(50%);
-      right: 120%;
+      top: 50%;
+      right: calc(100% + 10px);
+      transform: translateY(-50%) scale(0.95);
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: all 0.2s ease-out;
       font-size: 12px;
       font-weight: normal;
-      line-height: 1.4;
+      line-height: 1.5;
       pointer-events: none;
     }
     .select-option .info-icon:hover .tooltip {
       visibility: visible;
       opacity: 1;
+      transform: translateY(-50%) scale(1);
     }
 
     .chat-history {
@@ -612,6 +635,7 @@ export class GdmLiveAudio extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 20px;
+      scroll-behavior: smooth;
     }
     .message {
       max-width: 80%;
@@ -621,7 +645,7 @@ export class GdmLiveAudio extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      transition: transform 0.3s ease, opacity 0.3s ease;
+      animation: message-appear 0.4s ease-out;
     }
     .message.user {
       background: var(--user-message-background);
@@ -634,6 +658,19 @@ export class GdmLiveAudio extends LitElement {
       align-self: flex-start;
       border-bottom-left-radius: 4px;
     }
+    .message.loading {
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+    }
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--button-background);
+      border-top-color: var(--text-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
     .message img,
     .message video {
       max-width: 100%;
@@ -644,6 +681,7 @@ export class GdmLiveAudio extends LitElement {
       padding: 15px 20px;
       background: var(--header-background);
       border-top: 1px solid var(--border-color);
+      box-shadow: 0 -5px 15px -5px var(--shadow-color);
       flex-shrink: 0;
     }
     .input-area {
@@ -651,8 +689,14 @@ export class GdmLiveAudio extends LitElement {
       align-items: center;
       gap: 10px;
       background: var(--input-background);
+      border: 1px solid transparent;
       border-radius: 12px;
       padding: 5px 15px;
+      transition: all 0.2s ease;
+    }
+    .input-area:focus-within {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 25%, transparent);
     }
     .input-area textarea {
       flex-grow: 1;
@@ -677,6 +721,7 @@ export class GdmLiveAudio extends LitElement {
       align-items: center;
       justify-content: center;
       transition: background-color 0.2s ease;
+      flex-shrink: 0;
     }
     .input-area button:hover {
       background: var(--accent-color-hover);
@@ -685,11 +730,11 @@ export class GdmLiveAudio extends LitElement {
       background: var(--text-secondary);
       cursor: not-allowed;
     }
-    .input-area button.upload-btn {
+    .input-area .upload-btn {
       background: transparent;
       color: var(--text-secondary);
     }
-    .input-area button.upload-btn:hover {
+    .input-area .upload-btn:hover {
       color: var(--text-primary);
     }
     .file-previews {
@@ -735,6 +780,7 @@ export class GdmLiveAudio extends LitElement {
       align-items: center;
       justify-content: center;
       line-height: 1;
+      box-shadow: 0 1px 3px var(--shadow-color);
     }
 
     .theme-toggle {
@@ -1477,6 +1523,12 @@ export class GdmLiveAudio extends LitElement {
     this.setAttribute('theme', this.theme);
   }
 
+  protected updated(changedProperties: Map<string | number | symbol, unknown>): void {
+      if (changedProperties.has('playgroundChatHistory')) {
+          this._chatHistoryEl?.scrollTo(0, this._chatHistoryEl.scrollHeight);
+      }
+  }
+
   render() {
     return html`
     <div class="app-container">
@@ -1653,7 +1705,8 @@ export class GdmLiveAudio extends LitElement {
                     ${
                       this.playgroundIsLoading
                         ? html`
-                            <div class="message model">
+                            <div class="message model loading">
+                              <div class="spinner"></div>
                               <span>Thinking...</span>
                             </div>
                           `
@@ -1682,11 +1735,10 @@ export class GdmLiveAudio extends LitElement {
                       <textarea
                         placeholder="Type your prompt here..."
                         rows="1"></textarea>
-                      <label
-                        for="file-upload"
-                        class="upload-btn"
-                        style="display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; cursor:pointer;">
-                        📎
+                      <label for="file-upload" class="upload-btn">
+                         <button as="div" class="upload-btn" type="button" style="cursor:pointer">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.59a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                         </button>
                       </label>
                       <input
                         id="file-upload"
@@ -1698,7 +1750,7 @@ export class GdmLiveAudio extends LitElement {
                       <button type="submit" ?disabled=${
                         this.playgroundIsLoading
                       }>
-                        &uarr;
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
                       </button>
                     </div>
                   </form>
